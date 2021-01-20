@@ -45,7 +45,7 @@ class StreamFunc(object):
 
         if lines:
             for line in lines:
-                self.func(line.decode('utf-8', 'ignore')[:-1])
+                self.func(line.decode('ISO-8859-1')[:-1])
 
 def next_sleep_interval(previous_sleep_interval):
     min_interval = previous_sleep_interval or MIN_RETRY_INTERVAL
