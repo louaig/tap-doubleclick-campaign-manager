@@ -76,7 +76,7 @@ def process_file(service, fieldmap, report_config, file_id, report_time):
 
     csv_file = os.path.join(working_dir, report_config['stream_name'] + '.csv')
 
-    Xlsx2csv(os.path.realpath(out_file.name),  outputencoding="utf-8").convert(csv_file)
+    Xlsx2csv(os.path.realpath(out_file.name)).convert(csv_file)
 
     report_id = report_config['report_id']
     stream_name = report_config['stream_name']
