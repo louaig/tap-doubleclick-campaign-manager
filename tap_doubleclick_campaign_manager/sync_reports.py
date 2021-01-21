@@ -71,9 +71,6 @@ def process_file(service, fieldmap, report_config, file_id, report_time):
     while download_finished is False:
         _, download_finished = downloader.next_chunk()
 
-    print('File %s downloaded to %s' % (file_id,
-                                        os.path.realpath(out_file.name)))
-
     csv_file = os.path.join(working_dir, report_config['stream_name'] + '.csv')
 
     Xlsx2csv(os.path.realpath(out_file.name),  outputencoding="utf-8").convert(csv_file)
