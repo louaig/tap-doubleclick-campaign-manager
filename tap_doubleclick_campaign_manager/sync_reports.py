@@ -1,9 +1,10 @@
 import io
-import re
-import csv
 import time
 import random
 from datetime import datetime
+import os
+import csv
+from xlsx2csv import Xlsx2csv
 
 import singer
 from googleapiclient import http
@@ -22,30 +23,6 @@ MIN_RETRY_INTERVAL = 2 # 10 seconds
 MAX_RETRY_INTERVAL = 300 # 5 minutes
 MAX_RETRY_ELAPSED_TIME = 3600 # 1 hour
 CHUNK_SIZE = 16 * 1024 * 1024 # 16 MB
-
-class StreamFunc(object):
-    def __init__(self, func):
-        self.func = func
-        self.last_bytes = None
-
-    def write(self, _bytes):
-        with io.BytesIO() as stream:
-            if self.last_bytes:
-                stream.write(self.last_bytes)
-
-            stream.write(_bytes)
-            stream.seek(0)
-
-            lines = stream.readlines()
-
-            if lines and lines[-1][-1:] != b'\n':
-                self.last_bytes = lines.pop()
-            else:
-                self.last_bytes = None
-
-        if lines:
-            for line in lines:
-                self.func(line.decode('ISO-8859-1')[:-1])
 
 def next_sleep_interval(previous_sleep_interval):
     min_interval = previous_sleep_interval or MIN_RETRY_INTERVAL
@@ -78,11 +55,32 @@ def transform_field(dfa_type, value):
     return value
 
 def process_file(service, fieldmap, report_config, file_id, report_time):
+    working_dir = '/tmp/'
+    out_file = io.FileIO(os.path.join(working_dir,report_config['stream_name']+'.xlsx'), mode='wb')
+
+    # Create a get request.
+    request = service.files().get_media(reportId=report_config['report_id'], fileId=file_id)
+
+    # Create a media downloader instance.
+    # Optional: adjust the chunk size used when downloading the file.
+    downloader = http.MediaIoBaseDownload(
+        out_file, request, chunksize=CHUNK_SIZE)
+
+    # Execute the get request and download the file.
+    download_finished = False
+    while download_finished is False:
+        _, download_finished = downloader.next_chunk()
+
+    print('File %s downloaded to %s' % (file_id,
+                                        os.path.realpath(out_file.name)))
+
+    csv_file = os.path.join(working_dir, report_config['stream_name'] + '.csv')
+
+    Xlsx2csv(os.path.realpath(out_file.name),  outputencoding="utf-8").convert(csv_file)
+
     report_id = report_config['report_id']
     stream_name = report_config['stream_name']
     stream_alias = report_config['stream_alias']
-
-    request = service.files().get_media(reportId=report_id, fileId=file_id)
 
     line_state = {
         'headers_line': False,
@@ -91,9 +89,11 @@ def process_file(service, fieldmap, report_config, file_id, report_time):
     }
 
     report_id_int = int(report_id)
-
+    #
     def line_transform(line):
-        if not line_state['past_headers'] and not line_state['headers_line'] and line == 'Report Fields':
+        if line.startswith((' ', '\t')):
+            return
+        if not line_state['past_headers'] and not line_state['headers_line'] and 'Report Fields' in line:
             line_state['headers_line'] = True
             return
         if line_state['headers_line']:
@@ -117,14 +117,10 @@ def process_file(service, fieldmap, report_config, file_id, report_time):
 
             singer.write_record(stream_name, obj, stream_alias=stream_alias)
             line_state['count'] += 1
-    
-    stream = StreamFunc(line_transform)
-    downloader = http.MediaIoBaseDownload(stream,
-                                          request,
-                                          chunksize=CHUNK_SIZE)
-    download_finished = False
-    while download_finished is False:
-        _, download_finished = downloader.next_chunk()
+
+    with open(csv_file) as f:
+        for line in f:
+            line_transform(line)
 
     with singer.metrics.record_counter(stream_name) as counter:
         counter.increment(line_state['count'])
@@ -182,6 +178,7 @@ def sync_report(service, field_type_lookup, profile_id, report_config):
                         report_file_id,
                         status)
                 LOGGER.error(message)
+                raise Exception(message)
                 raise Exception(message)
             elif time.time() - start_time > MAX_RETRY_ELAPSED_TIME:
                 message = '{}: report_id {} / file_id {} - File processing deadline exceeded ({} secs)'.format(

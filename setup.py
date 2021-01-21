@@ -14,7 +14,8 @@ setup(
         "singer-python>=5.1.1",
         "pendulum",
         "google-api-python-client",
-        "oauth2client==4.1.2"
+        "oauth2client==4.1.2",
+        'xlsx2csv'
     ],
     entry_points="""
     [console_scripts]
