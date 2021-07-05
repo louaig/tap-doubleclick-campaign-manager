@@ -4,7 +4,7 @@ import random
 from datetime import datetime
 import os
 import csv
-from xlsx2csv import Xlsx2csv
+from xlsx2csv import Xlsx2csv, InvalidXlsxFileException
 
 import singer
 from googleapiclient import http
@@ -56,7 +56,7 @@ def transform_field(dfa_type, value):
 
 def process_file(service, fieldmap, report_config, file_id, report_time):
     working_dir = '/tmp/'
-    out_file = io.FileIO(os.path.join(working_dir,report_config['stream_name']+'.xlsx'), mode='wb')
+    out_file = io.FileIO(os.path.join(working_dir, report_config['stream_name']), mode='wb')
 
     # Create a get request.
     request = service.files().get_media(reportId=report_config['report_id'], fileId=file_id)
@@ -73,7 +73,12 @@ def process_file(service, fieldmap, report_config, file_id, report_time):
 
     csv_file = os.path.join(working_dir, report_config['stream_name'] + '.csv')
 
-    Xlsx2csv(os.path.realpath(out_file.name),  outputencoding="utf-8").convert(csv_file)
+    try:
+        Xlsx2csv(os.path.realpath(out_file.name)).convert(csv_file)
+    except InvalidXlsxFileException as exception:
+        print('file is in csv format, will skip convert')
+        dev_null = exception
+        csv_file = os.path.realpath(out_file.name)
 
     report_id = report_config['report_id']
     stream_name = report_config['stream_name']
